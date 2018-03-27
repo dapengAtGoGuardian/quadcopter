@@ -25,10 +25,12 @@ class Task():
 
         # Goal
         self.target_pos = target_pos if target_pos is not None else np.array([0., 0., 10.]) 
+        #print('Task() target_pos: ', target_pos)
 
     def get_reward(self):
         """Uses current pose of sim to return reward."""
-        reward = 1.-.3*(abs(self.sim.pose[:3] - self.target_pos)).sum()
+        reward = 1.-.3*(abs(self.sim.pose[:3] - self.target_pos)).sum() # this only considers positions; but not rotation...
+        #reward = 1.-.3*(abs(self.sim.pose[:3] - self.target_pos)).sum() - .1*abs(self.sim.pose[3:6]).sum()# don't rotate!
         return reward
 
     def step(self, rotor_speeds):
