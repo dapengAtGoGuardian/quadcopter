@@ -28,8 +28,11 @@ class Task():
             pose_all.append(self.sim.pose)
         next_state = np.concatenate(pose_all)
         '''
+        prevState = self.get_state()
         done = self.sim.next_timestep(rotor_speeds)
-        reward = self.get_reward() 
+        currentState = self.get_state()
+        #reward = self.get_reward() 
+        reward = np.square(prevState[:3] - self.target_pos).sum() - np.square(currentState[:3] - self.target_pos).sum()
         next_state = self.get_state()
         return next_state, reward, done
 

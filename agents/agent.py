@@ -25,18 +25,18 @@ from physics_sim import PhysicsSim
 replay_buffer_size = 1024 # * 1024
 state_dim = 12
 action_dim = 4
-action_bound = 1000
-actor_lr = 0.005
-critic_lr = 0.05
+action_bound = 500
+actor_lr = 0.05
+critic_lr = 0.5
 gamma = 1
-actor_tau = 0.1 # the bigger, the faster to move to new value; the smaller, the more stable in later stage
-critic_tau = 0.1
-batch_size = 32
+actor_tau = 0.01 # the bigger, the faster to move to new value; the smaller, the more stable in later stage
+critic_tau = 0.01
+batch_size = 64
 
 class ReplayBuffer(object):
     def __init__(self):
         self.buffer = deque(maxlen=replay_buffer_size)
-        random.seed(6666)
+        #random.seed(6666)
 
     def add(self, s, a, r, t, s2):
         self.buffer.append((s, a, r, t, s2))
@@ -83,11 +83,11 @@ class ActorNetwork(object):
         self.action_gradient = tf.placeholder(tf.float32, [None, self.a_dim])
         # Combine the gradients here
         '''
+        self.actor_gradients = tf.gradients(self.scaled_out, self.network_params, -self.action_gradient/self.batch_size)
+        '''
         self.unnormalized_actor_gradients = tf.gradients(
             self.scaled_out, self.network_params, -self.action_gradient)
         self.actor_gradients = list(map(lambda x: tf.div(x, self.batch_size), self.unnormalized_actor_gradients))
-        '''
-        self.actor_gradients = tf.gradients(self.scaled_out, self.network_params, -self.action_gradient/self.batch_size)
         '''
         self.actor_gradients = tf.scalar_mul(
             1/self.batch_size,
@@ -96,14 +96,13 @@ class ActorNetwork(object):
         self.optimize = tf.train.AdamOptimizer(self.learning_rate).\
             apply_gradients(zip(self.actor_gradients, self.network_params))
 
-        self.num_trainable_vars = len(self.network_params) + len(self.target_network_params)
-
     def create_actor_network(self):
+        ws_init = tflearn.initializations.uniform(minval=-1.0/np.sqrt(self.s_dim), maxval=1/np.sqrt(self.s_dim))
         inputs = tflearn.input_data(shape=[None, self.s_dim])
-        net = tflearn.fully_connected(inputs, 400)
+        net = tflearn.fully_connected(inputs, 400, weights_init=ws_init)
         net = tflearn.layers.normalization.batch_normalization(net)
         net = tflearn.activations.relu(net)
-        net = tflearn.fully_connected(net, 300)
+        net = tflearn.fully_connected(net, 300, weights_init=ws_init)
         net = tflearn.layers.normalization.batch_normalization(net)
         net = tflearn.activations.relu(net)
         w_init = tflearn.initializations.uniform(minval=-0.003, maxval=0.003)
@@ -164,14 +163,16 @@ class CriticNetwork(object):
         self.action_grads = tf.gradients(self.out, self.action) # shape === [batch_size, a_dim]
 
     def create_critic_network(self):
+        ws_init = tflearn.initializations.uniform(minval=-1.0/np.sqrt(self.s_dim), maxval=1/np.sqrt(self.s_dim))
+
         inputs = tflearn.input_data(shape=[None, self.s_dim])
         action = tflearn.input_data(shape=[None, self.a_dim])
-        net = tflearn.fully_connected(inputs, 400)
+        net = tflearn.fully_connected(inputs, 400, weights_init=ws_init)
         net = tflearn.layers.normalization.batch_normalization(net)
         net = tflearn.activations.relu(net)
 
-        t1 = tflearn.fully_connected(net, 300)
-        t2 = tflearn.fully_connected(action, 300)
+        t1 = tflearn.fully_connected(net, 300, weights_init=ws_init)
+        t2 = tflearn.fully_connected(action, 300, weights_init=ws_init)
 
         #net = tflearn.activation(tf.matmul(net, t1.W) + tf.matmul(action, t2.W) + t2.b, activation='relu')
         net = tflearn.activations.relu(tf.matmul(net, t1.W) + tf.matmul(action, t2.W) + t2.b)
@@ -254,7 +255,7 @@ def train(sess, task, actor, critic, actor_noise, epoches, max_steps):
     tflearn.is_training(True)
 
     qmaxs = []
-    xyzs = []
+    xyzabcs = []
     for i in range(1, epoches+1):
         s = task.reset()
         replay_buffer.clear()
@@ -262,13 +263,19 @@ def train(sess, task, actor, critic, actor_noise, epoches, max_steps):
         min_distance = np.inf
 
         for j in range(1, max_steps+1):
-            a = actor.predict(np.reshape(s, (1, actor.s_dim))) # + actor_noise()
+            a = actor.predict(np.reshape(s, (1, actor.s_dim))) + actor_noise()
             s2, r, terminal = task.step(a[0])
             replay_buffer.add(
                 #np.reshape(s, (state_dim,)), np.reshape(a, (actor_dim,)), r, terminal, np.reshape(s2, (state_dim,)))
                 s.reshape((state_dim,)), a.reshape((action_dim,)), r, terminal, s2.reshape((state_dim,)))
 
             print('epoch', i, j, ' -->', s2.reshape((state_dim,))[:3], end='\r', flush=True)
+            s = s2
+            if terminal:
+                break
+            if (abs(s[:3] - task.target_pos)).sum() < 3:
+                break
+        if True:
             if replay_buffer.size() >= batch_size:
                 s_batch, a_batch, r_batch, t_batch, s2_batch = replay_buffer.sample_batch()
 
@@ -291,23 +298,25 @@ def train(sess, task, actor, critic, actor_noise, epoches, max_steps):
                 amax = np.amax(predicted_q_value)
                 qmax = max(qmax, amax)
 
-            s = s2
-            if terminal:
-                break
-        x, y, z = s[:3]
-        print('epoch', i, 'steps', j, 'q max', qmax, 'x, y, z = {:.2f}, {:.2f}, {:.2f}          '.format(x, y, z),
+        x, y, z, a, b, c = s[:6]
+        if i % 10 == 0:
+            print('epoch', i, 'steps', j, 'q max', qmax,
+              'x,y,z = {:.2f}, {:.2f}, {:.2f}; a,b,c = {:.2f}, {:.2f}, {:.2f}           '.format(x, y, z, a, b, c),
               end='\n', flush=True)
         qmaxs.append(qmax)
-        xyzs.append((x, y, z))
+        xyzabcs.append((x, y, z, a, b, c))
     #print(qmaxs)
     #print(xyzs)
-    return qmaxs, xyzs
+    return qmaxs, xyzabcs
 
 def main(task, epoches=10, max_steps=128):
 
+    print(
+      'replay_buffer_size, state_dim, action_dim, action_bound, actor_lr, critic_lr, gamma, actor_tau, critic_tau, batch_size\n',
+       replay_buffer_size, state_dim, action_dim, action_bound, actor_lr, critic_lr, gamma, actor_tau, critic_tau, batch_size)
     with tf.Session() as sess:
-        np.random.seed(6666)
-        tf.set_random_seed(6666)
+        #np.random.seed(6666)
+        #tf.set_random_seed(6666)
         actor = ActorNetwork(sess, state_dim, action_dim, actor_lr, actor_tau, batch_size)
         critic = CriticNetwork(sess, state_dim, action_dim, critic_lr, critic_tau, gamma)
         actor_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_dim))
