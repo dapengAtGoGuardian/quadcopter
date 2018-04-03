@@ -26,12 +26,13 @@ replay_buffer_size = 1024 # * 1024
 state_dim = 12
 action_dim = 4
 action_bound = 500
-actor_lr = 0.05
-critic_lr = 0.5
+actor_lr = 0.002
+critic_lr = 0.01
 gamma = 1
-actor_tau = 0.01 # the bigger, the faster to move to new value; the smaller, the more stable in later stage
-critic_tau = 0.01
-batch_size = 64
+actor_tau = 0.9 # the bigger, the faster to move to new value; the smaller, the more stable in later stage
+critic_tau = 0.9
+batch_size = 32
+print_per = 100
 
 class ReplayBuffer(object):
     def __init__(self):
@@ -82,13 +83,12 @@ class ActorNetwork(object):
         # This gradient will be provided by the critic network
         self.action_gradient = tf.placeholder(tf.float32, [None, self.a_dim])
         # Combine the gradients here
-        '''
         self.actor_gradients = tf.gradients(self.scaled_out, self.network_params, -self.action_gradient/self.batch_size)
         '''
         self.unnormalized_actor_gradients = tf.gradients(
             self.scaled_out, self.network_params, -self.action_gradient)
         self.actor_gradients = list(map(lambda x: tf.div(x, self.batch_size), self.unnormalized_actor_gradients))
-        '''
+        #' ''
         self.actor_gradients = tf.scalar_mul(
             1/self.batch_size,
             tf.gradients(self.scaled_out, self.network_params, -self.action_gradient/self.batch_size))
@@ -198,12 +198,13 @@ class CriticNetwork(object):
         return self.sess.run(self.action_grads, feed_dict={self.inputs: inputs, self.action: actions})
 
     def update_target_network(self):
-        #self.sess.run(self.update_target_network_params)
+        self.sess.run(self.update_target_network_params)
+        '''
         for i in range(len(self.target_network_params)):
             self.target_network_params[i].assign(
                 tf.multiply(self.network_params[i], self.tau) +
                 tf.multiply(self.target_network_params[i], 1. - self.tau))
-        '''
+        #' ''
         for target_network_param in range(elf.target_network_params):
             target_network_param.assign(
                 tf.multiply(self.network_params[i], self.tau) +
@@ -214,7 +215,7 @@ class CriticNetwork(object):
 # Taken from https://github.com/openai/baselines/blob/master/baselines/ddpg/noise.py, which is
 # based on http://math.stackexchange.com/questions/1287634/implementing-ornstein-uhlenbeck-in-matlab
 class OrnsteinUhlenbeckActionNoise:
-    def __init__(self, mu, sigma=0.3, theta=.15, dt=1e-2, x0=None):
+    def __init__(self, mu, sigma=0.03, theta=.015, dt=1e-3, x0=None):
         self.theta = theta
         self.mu = mu
         self.sigma = sigma
@@ -269,12 +270,14 @@ def train(sess, task, actor, critic, actor_noise, epoches, max_steps):
                 #np.reshape(s, (state_dim,)), np.reshape(a, (actor_dim,)), r, terminal, np.reshape(s2, (state_dim,)))
                 s.reshape((state_dim,)), a.reshape((action_dim,)), r, terminal, s2.reshape((state_dim,)))
 
-            print('epoch', i, j, ' -->', s2.reshape((state_dim,))[:3], end='\r', flush=True)
+            #print('epoch', i, j, ' -->', s2.reshape((state_dim,))[:3], end='\r', flush=True)
             s = s2
             if terminal:
                 break
+            ''' don't do this, because the quadcopter just fall through the target_pos in takeoff training
             if (abs(s[:3] - task.target_pos)).sum() < 3:
                 break
+            '''
         if True:
             if replay_buffer.size() >= batch_size:
                 s_batch, a_batch, r_batch, t_batch, s2_batch = replay_buffer.sample_batch()
@@ -299,7 +302,7 @@ def train(sess, task, actor, critic, actor_noise, epoches, max_steps):
                 qmax = max(qmax, amax)
 
         x, y, z, a, b, c = s[:6]
-        if i % 10 == 0:
+        if i % print_per == 0:
             print('epoch', i, 'steps', j, 'q max', qmax,
               'x,y,z = {:.2f}, {:.2f}, {:.2f}; a,b,c = {:.2f}, {:.2f}, {:.2f}           '.format(x, y, z, a, b, c),
               end='\n', flush=True)

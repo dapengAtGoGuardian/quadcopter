@@ -10,13 +10,12 @@ class Task():
     def get_state(self):
         return np.concatenate((self.sim.pose, self.sim.v, self.sim.angular_v))
 
+    '''
     def get_reward(self):
-        '''
-        only consider the distance to the target; hopefully other factors are taken care of by actions
-        '''
-        reward = 1.-.3*(abs(self.sim.pose[:3] - self.target_pos)).sum() # this only considers positions; but not rotation...
-        #reward = 1.-.3*(abs(self.sim.pose[:3] - self.target_pos)).sum() - .1*abs(self.sim.pose[3:6]).sum()# don't rotate!
+        #reward = 1.-.3*(abs(self.sim.pose[:3] - self.target_pos)).sum() # this only considers positions; but not rotation...
+        reward = - .1*abs(self.sim.pose[3:6]).sum()# don't rotate!
         return reward
+    '''
 
     def step(self, rotor_speeds):
         ''' # not sure why we need to repeat the action -- keep the code here
@@ -32,7 +31,12 @@ class Task():
         done = self.sim.next_timestep(rotor_speeds)
         currentState = self.get_state()
         #reward = self.get_reward() 
-        reward = np.square(prevState[:3] - self.target_pos).sum() - np.square(currentState[:3] - self.target_pos).sum()
+        #np.square(prevState[:3] - self.target_pos).sum()
+        # improvement of distance + no rotation + no offset
+        reward =  np.sqrt(np.square(prevState[:3] - self.target_pos).sum()) -\
+            np.sqrt(np.square(currentState[:3] - self.target_pos).sum()) -\
+            abs(self.sim.pose[3:6]).sum() -\
+            abs(self.sim.pose[:2]).sum()
         next_state = self.get_state()
         return next_state, reward, done
 
