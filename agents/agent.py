@@ -294,7 +294,8 @@ def train(sess, task, actor, critic, actor_noise, epoches, max_steps):
                 
             #print('epoch', i, j, ' -->', s2.reshape((state_dim,))[:3], end='\r', flush=True)
             s = s2
-            if np.abs(s[:3] - task.target_pos).sum() < 2:
+            #if np.abs(s[:3] - task.target_pos).sum() < 2:
+            if np.linalg.norm(s[:3] - task.target_pos) < 1:
                 print('------------ target pos reached.  epoch ', i, 'step', j,
                       '({:.2f}, {:.2f}, {:.2f}), angles ({:.2f}, {:.2f}, {:.2f})'.format(s[0], s[1], s[2], s[3], s[4], s[5]))
                 terminal = True
