@@ -28,15 +28,24 @@ class Task():
         next_state = np.concatenate(pose_all)
         '''
         prevState = self.get_state()
+        prev_angular_v = np.copy(self.sim.angular_v)
         done = self.sim.next_timestep(rotor_speeds)
         currentState = self.get_state()
         #reward = self.get_reward() 
         #np.square(prevState[:3] - self.target_pos).sum()
         # improvement of distance + no rotation + no offset
-        reward =  np.sqrt(np.square(prevState[:3] - self.target_pos).sum()) -\
-            np.sqrt(np.square(currentState[:3] - self.target_pos).sum()) -\
+        #reward =  1*(np.sqrt(np.square(prevState[:3] - self.target_pos).sum()) -\
+        #    np.sqrt(np.square(currentState[:3] - self.target_pos).sum())) -\
+        reward_distance = np.sqrt(np.square(prevState[:3] - self.target_pos).sum()) -\
+            np.sqrt(np.square(currentState[:3] - self.target_pos).sum())
+        reward_rotation = np.abs(prevState[3:6]).sum() - np.abs(currentState[3:6]).sum()
+        reward_xy_offset = np.abs(prevState[:2]).sum() - np.abs(currentState[:2]).sum()
+        reward = 3 * reward_distance + reward_rotation + reward_xy_offset
+        '''
+        reward = 1 - np.abs(self.target_pos[2] - currentState[2]) -\
             abs(self.sim.pose[3:6]).sum() -\
             abs(self.sim.pose[:2]).sum()
+        '''
         next_state = self.get_state()
         return next_state, reward, done
 

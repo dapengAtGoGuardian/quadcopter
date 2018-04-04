@@ -22,17 +22,17 @@ import numpy as np
 
 from physics_sim import PhysicsSim
 
-replay_buffer_size = 1024 # * 1024
+replay_buffer_size = 256 * 500
 state_dim = 12
 action_dim = 4
 action_bound = 500
-actor_lr = 0.002
+actor_lr = 0.001
 critic_lr = 0.01
 gamma = 1
 actor_tau = 0.9 # the bigger, the faster to move to new value; the smaller, the more stable in later stage
 critic_tau = 0.9
 batch_size = 32
-print_per = 100
+print_per = 10
 
 class ReplayBuffer(object):
     def __init__(self):
@@ -99,10 +99,10 @@ class ActorNetwork(object):
     def create_actor_network(self):
         ws_init = tflearn.initializations.uniform(minval=-1.0/np.sqrt(self.s_dim), maxval=1/np.sqrt(self.s_dim))
         inputs = tflearn.input_data(shape=[None, self.s_dim])
-        net = tflearn.fully_connected(inputs, 400, weights_init=ws_init)
+        net = tflearn.fully_connected(inputs, 40, weights_init=ws_init)
         net = tflearn.layers.normalization.batch_normalization(net)
         net = tflearn.activations.relu(net)
-        net = tflearn.fully_connected(net, 300, weights_init=ws_init)
+        net = tflearn.fully_connected(net, 30, weights_init=ws_init)
         net = tflearn.layers.normalization.batch_normalization(net)
         net = tflearn.activations.relu(net)
         w_init = tflearn.initializations.uniform(minval=-0.003, maxval=0.003)
@@ -167,12 +167,12 @@ class CriticNetwork(object):
 
         inputs = tflearn.input_data(shape=[None, self.s_dim])
         action = tflearn.input_data(shape=[None, self.a_dim])
-        net = tflearn.fully_connected(inputs, 400, weights_init=ws_init)
+        net = tflearn.fully_connected(inputs, 40, weights_init=ws_init)
         net = tflearn.layers.normalization.batch_normalization(net)
         net = tflearn.activations.relu(net)
 
-        t1 = tflearn.fully_connected(net, 300, weights_init=ws_init)
-        t2 = tflearn.fully_connected(action, 300, weights_init=ws_init)
+        t1 = tflearn.fully_connected(net, 30, weights_init=ws_init)
+        t2 = tflearn.fully_connected(action, 30, weights_init=ws_init)
 
         #net = tflearn.activation(tf.matmul(net, t1.W) + tf.matmul(action, t2.W) + t2.b, activation='relu')
         net = tflearn.activations.relu(tf.matmul(net, t1.W) + tf.matmul(action, t2.W) + t2.b)
@@ -215,7 +215,7 @@ class CriticNetwork(object):
 # Taken from https://github.com/openai/baselines/blob/master/baselines/ddpg/noise.py, which is
 # based on http://math.stackexchange.com/questions/1287634/implementing-ornstein-uhlenbeck-in-matlab
 class OrnsteinUhlenbeckActionNoise:
-    def __init__(self, mu, sigma=0.03, theta=.015, dt=1e-3, x0=None):
+    def __init__(self, mu, sigma=0.3, theta=.15, dt=1e-2, x0=None):
         self.theta = theta
         self.mu = mu
         self.sigma = sigma
@@ -259,7 +259,7 @@ def train(sess, task, actor, critic, actor_noise, epoches, max_steps):
     xyzabcs = []
     for i in range(1, epoches+1):
         s = task.reset()
-        replay_buffer.clear()
+        #replay_buffer.clear()
         qmax = -np.inf
         min_distance = np.inf
 
@@ -270,15 +270,6 @@ def train(sess, task, actor, critic, actor_noise, epoches, max_steps):
                 #np.reshape(s, (state_dim,)), np.reshape(a, (actor_dim,)), r, terminal, np.reshape(s2, (state_dim,)))
                 s.reshape((state_dim,)), a.reshape((action_dim,)), r, terminal, s2.reshape((state_dim,)))
 
-            #print('epoch', i, j, ' -->', s2.reshape((state_dim,))[:3], end='\r', flush=True)
-            s = s2
-            if terminal:
-                break
-            ''' don't do this, because the quadcopter just fall through the target_pos in takeoff training
-            if (abs(s[:3] - task.target_pos)).sum() < 3:
-                break
-            '''
-        if True:
             if replay_buffer.size() >= batch_size:
                 s_batch, a_batch, r_batch, t_batch, s2_batch = replay_buffer.sample_batch()
 
@@ -300,6 +291,20 @@ def train(sess, task, actor, critic, actor_noise, epoches, max_steps):
 
                 amax = np.amax(predicted_q_value)
                 qmax = max(qmax, amax)
+                
+            #print('epoch', i, j, ' -->', s2.reshape((state_dim,))[:3], end='\r', flush=True)
+            s = s2
+            if np.abs(s[:3] - task.target_pos).sum() < 2:
+                print('------------ target pos reached.  epoch ', i, 'step', j,
+                      '({:.2f}, {:.2f}, {:.2f}), angles ({:.2f}, {:.2f}, {:.2f})'.format(s[0], s[1], s[2], s[3], s[4], s[5]))
+                terminal = True
+            if terminal:
+                break
+            ''' don't do this, because the quadcopter just fall through the target_pos in takeoff training
+            if (abs(s[:3] - task.target_pos)).sum() < 3:
+                break
+            '''
+        #if True:
 
         x, y, z, a, b, c = s[:6]
         if i % print_per == 0:
