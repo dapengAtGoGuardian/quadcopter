@@ -24,7 +24,7 @@ from physics_sim import PhysicsSim
 
 replay_buffer_size = 256 * 500
 state_dim = 12
-action_dim = 4
+action_dim = 1
 action_bound = 500
 actor_lr = 0.001
 critic_lr = 0.01
@@ -32,7 +32,7 @@ gamma = 1
 actor_tau = 0.9 # the bigger, the faster to move to new value; the smaller, the more stable in later stage
 critic_tau = 0.9
 batch_size = 32
-print_per = 10
+print_per = 200
 
 class ReplayBuffer(object):
     def __init__(self):
