@@ -14,16 +14,17 @@ class Task():
         self.stepCount = 0
         self.max_runtime = runtime
 
-    # [z_pos, z_speed]
     def get_state(self):
-        return np.array([self.sim.pose[2], self.sim.v[2]])
+        # [z_pos, z_speed]
+        #return np.array([self.sim.pose[2], self.sim.v[2]])
+        return np.concatenate((self.sim.pose, self.sim.v, self.sim.angular_v))
 
     '''
     this is a popular reward function
     '''
-    def step(self, rotor_speed):
+    def step(self, rotor_speeds):
         self.stepCount += 1
-        self.sim.next_timestep(np.repeat(rotor_speed, 4))
+        self.sim.next_timestep(rotor_speeds)
         next_state = self.get_state()
         reward = -min(abs(self.target_z - self.sim.pose[2]), 20.0)
         done = False

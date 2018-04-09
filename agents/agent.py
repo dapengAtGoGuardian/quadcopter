@@ -23,8 +23,8 @@ import numpy as np
 from physics_sim import PhysicsSim
 
 replay_buffer_size = 256 * 500
-state_dim = 2
-action_dim = 1 # use the same speed for all 4 rotors, garantee we stay in z- space.
+state_dim = 12
+action_dim = 4 # use the same speed for all 4 rotors, garantee we stay in z- space.
 action_bound = 1000
 actor_lr = 0.01
 critic_lr = 0.1
@@ -32,14 +32,14 @@ gamma = 0.99
 actor_tau = 0.1 # the bigger, the faster to move to new value; the smaller, the more stable in later stage
 critic_tau = 0.1
 batch_size = 32
-print_per = 50
+print_per = 10
 hidden_layer_1 = 2
 hidden_layer_2 = 2
+
 
 class ReplayBuffer(object):
     def __init__(self):
         self.buffer = deque(maxlen=replay_buffer_size)
-        #random.seed(6666)
 
     def add(self, s, a, r, t, s2):
         self.buffer.append((s, a, r, t, s2))
@@ -262,7 +262,7 @@ def train(sess, task, actor, critic, actor_noise, epochs, max_steps):
 
         for j in range(1, max_steps+1):
             a = actor.predict(np.reshape(s, (1, actor.s_dim))) + actor_noise()
-            s2, r, terminal = task.step(a)
+            s2, r, terminal = task.step(a[0])
             replay_buffer.add(
                 s.reshape((state_dim,)), a.reshape((action_dim,)), r, terminal, s2.reshape((state_dim,)))
 
@@ -295,22 +295,24 @@ def train(sess, task, actor, critic, actor_noise, epochs, max_steps):
             if terminal:
                 break
 
-        z_pos, z_speed = s
+        x, y, z, a, b, c = s[:6]
         if i % print_per == 0:
-            print('epoch', i, 'steps', j, 'q max', qmax, 'z_pos: {:.2f}, z_speed: {:.2f}   '.format(z_pos, z_speed),
-              end='\n', flush=True)
+            print('epoch', i, 'steps', j, 'q max', qmax,
+                  'xyz: {:.2f}, {:.2f}, {:.2f} abc: {:.2f}, {:.2f}, {:.2f}'.format(x,y,z,a,b,c),
+                  end='\n', flush=True)
         qmaxs.append(qmax)
-        zs.append((z_pos, z_speed))
+        zs.append((x,y,z,a,b,c))
     return qmaxs, zs
 
 def main(task, epochs=10, max_steps=128):
-
+    # what is the meaning of these seeds? training progress changes!!!
+    random.seed(0)
+    np.random.seed(0)
+    tf.set_random_seed(0)
     print(
       'replay_buffer_size, state_dim, action_dim, action_bound, actor_lr, critic_lr, gamma, actor_tau, critic_tau, batch_size\n',
        replay_buffer_size, state_dim, action_dim, action_bound, actor_lr, critic_lr, gamma, actor_tau, critic_tau, batch_size)
     with tf.Session() as sess:
-        #np.random.seed(6666)
-        #tf.set_random_seed(6666)
         actor = ActorNetwork(sess, state_dim, action_dim, actor_lr, actor_tau, batch_size)
         critic = CriticNetwork(sess, state_dim, action_dim, critic_lr, critic_tau, gamma)
         actor_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_dim))
